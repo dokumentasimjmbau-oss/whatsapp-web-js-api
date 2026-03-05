@@ -604,6 +604,226 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
+    // Get all chats (Protected with API Key)
+    if (pathname === '/chats' && req.method === 'GET') {
+        const authResult = await new Promise((resolve) => {
+            authenticate(req, res, () => resolve(true));
+        });
+        if (!authResult) return;
+
+        try {
+            if (!client.info) {
+                res.writeHead(503, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'WhatsApp client not ready' }));
+                return;
+            }
+
+            const chats = await client.getChats();
+            const formattedChats = chats.map(chat => ({
+                id: chat.id._serialized,
+                name: chat.name,
+                isGroup: chat.isGroup,
+                isMuted: chat.isMuted,
+                unreadCount: chat.unreadCount,
+                timestamp: chat.timestamp,
+                pinned: chat.pinned,
+                archived: chat.archived
+            }));
+
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                success: true,
+                count: formattedChats.length,
+                chats: formattedChats
+            }));
+        } catch (error) {
+            console.error('❌ Error fetching chats:', error.message);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: error.message }));
+        }
+        return;
+    }
+
+    // Get all groups (Protected with API Key)
+    if (pathname === '/groups' && req.method === 'GET') {
+        const authResult = await new Promise((resolve) => {
+            authenticate(req, res, () => resolve(true));
+        });
+        if (!authResult) return;
+
+        try {
+            if (!client.info) {
+                res.writeHead(503, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'WhatsApp client not ready' }));
+                return;
+            }
+
+            const chats = await client.getChats();
+            const groups = chats.filter(chat => chat.isGroup);
+            
+            const formattedGroups = await Promise.all(groups.map(async group => {
+                let participants = [];
+                try {
+                    participants = group.participants.map(p => ({
+                        id: p.id._serialized,
+                        isAdmin: p.isAdmin,
+                        isSuperAdmin: p.isSuperAdmin
+                    }));
+                } catch (e) {
+                    // Some groups might not have accessible participants
+                }
+
+                return {
+                    id: group.id._serialized,
+                    name: group.name,
+                    description: group.description || null,
+                    participants: participants,
+                    participantCount: participants.length,
+                    isMuted: group.isMuted,
+                    unreadCount: group.unreadCount,
+                    timestamp: group.timestamp,
+                    createdAt: group.createdAt || null
+                };
+            }));
+
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                success: true,
+                count: formattedGroups.length,
+                groups: formattedGroups
+            }));
+        } catch (error) {
+            console.error('❌ Error fetching groups:', error.message);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: error.message }));
+        }
+        return;
+    }
+
+    // Get all contacts (Protected with API Key)
+    if (pathname === '/contacts' && req.method === 'GET') {
+        const authResult = await new Promise((resolve) => {
+            authenticate(req, res, () => resolve(true));
+        });
+        if (!authResult) return;
+
+        try {
+            if (!client.info) {
+                res.writeHead(503, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'WhatsApp client not ready' }));
+                return;
+            }
+
+            const contacts = await client.getContacts();
+            const formattedContacts = contacts
+                .filter(contact => contact.number) // Only contacts with phone numbers
+                .map(contact => ({
+                    id: contact.id._serialized,
+                    number: contact.number,
+                    name: contact.name || contact.pushname || null,
+                    pushname: contact.pushname || null,
+                    shortName: contact.shortName || null,
+                    isBusiness: contact.isBusiness,
+                    isEnterprise: contact.isEnterprise,
+                    isMyContact: contact.isMyContact,
+                    isUser: contact.isUser,
+                    isGroup: contact.isGroup,
+                    profilePicUrl: null // Will be populated if needed
+                }));
+
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                success: true,
+                count: formattedContacts.length,
+                contacts: formattedContacts
+            }));
+        } catch (error) {
+            console.error('❌ Error fetching contacts:', error.message);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: error.message }));
+        }
+        return;
+    }
+
+    // Get all channels/newsletters (Protected with API Key)
+    if (pathname === '/channels' && req.method === 'GET') {
+        const authResult = await new Promise((resolve) => {
+            authenticate(req, res, () => resolve(true));
+        });
+        if (!authResult) return;
+
+        try {
+            if (!client.info) {
+                res.writeHead(503, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'WhatsApp client not ready' }));
+                return;
+            }
+
+            const chats = await client.getChats();
+            const channels = chats.filter(chat =>
+                chat.id && chat.id._serialized && chat.id._serialized.includes('@newsletter')
+            );
+
+            const formattedChannels = channels.map(channel => ({
+                id: channel.id._serialized,
+                name: channel.name,
+                description: channel.description || null,
+                subscriberCount: channel.subscriberCount || null,
+                isMuted: channel.isMuted,
+                unreadCount: channel.unreadCount,
+                timestamp: channel.timestamp
+            }));
+
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                success: true,
+                count: formattedChannels.length,
+                channels: formattedChannels
+            }));
+        } catch (error) {
+            console.error('❌ Error fetching channels:', error.message);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: error.message }));
+        }
+        return;
+    }
+
+    // Get info about logged in user (Protected with API Key)
+    if (pathname === '/me' && req.method === 'GET') {
+        const authResult = await new Promise((resolve) => {
+            authenticate(req, res, () => resolve(true));
+        });
+        if (!authResult) return;
+
+        try {
+            if (!client.info) {
+                res.writeHead(503, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'WhatsApp client not ready' }));
+                return;
+            }
+
+            const me = client.info;
+            
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                success: true,
+                user: {
+                    id: me.wid._serialized,
+                    number: me.wid.user,
+                    name: me.pushname || null,
+                    platform: me.platform,
+                    isBusiness: me.isBusiness || false,
+                    isEnterprise: me.isEnterprise || false
+                }
+            }));
+        } catch (error) {
+            console.error('❌ Error fetching user info:', error.message);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: error.message }));
+        }
+        return;
+    }
+
     // Send message endpoint (Protected with API Key)
     if (pathname === '/send-message' && req.method === 'POST') {
         // Check API Key
@@ -872,6 +1092,11 @@ const server = http.createServer(async (req, res) => {
         availableEndpoints: [
             'GET /qr',
             'GET /health',
+            'GET /me',
+            'GET /chats',
+            'GET /groups',
+            'GET /contacts',
+            'GET /channels',
             'GET /media/:filename',
             'POST /send-message',
             'POST /send-media'
