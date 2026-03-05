@@ -40,10 +40,32 @@ let qrCodeTimestamp = null;
 
 // Konfigurasi
 const CONFIG = {
-    WEBHOOK_URL: 'https://cloud.activepieces.com/api/v1/webhooks/49mCt0eLl7F1pA7ey4dFH',
+    WEBHOOK_URL: process.env.WEBHOOK_URL || 'https://cloud.activepieces.com/api/v1/webhooks/49mCt0eLl7F1pA7ey4dFH',
     MEDIA_FOLDER: './media',
-    NGROK_URL: 'https://agaze-elizabeth-groovelike.ngrok-free.dev'
+    NGROK_URL: process.env.NGROK_URL || null // Will be auto-detected from Railway or request
 };
+
+// Function to get base URL for media
+function getBaseURL(req) {
+    // Priority 1: Use Railway public domain from env
+    if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+        return `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
+    }
+    
+    // Priority 2: Use NGROK_URL from env
+    if (process.env.NGROK_URL) {
+        return process.env.NGROK_URL;
+    }
+    
+    // Priority 3: Use request host
+    if (req && req.headers && req.headers.host) {
+        const protocol = req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+        return `${protocol}://${req.headers.host}`;
+    }
+    
+    // Fallback: localhost
+    return `http://localhost:${API_PORT}`;
+}
 
 // Buat folder media jika belum ada
 if (!fs.existsSync(MEDIA_FOLDER)) {
@@ -284,13 +306,17 @@ client.on('message_create', async (message) => {
         };
 
         // Jika ada media, download dan tambahkan ke payload
+        // Note: We need to store req for later use in webhook
+        const currentReq = global.currentRequest;
+        
         if (message.hasMedia) {
             console.log('📎 Media terdeteksi, mendownload...');
             const mediaInfo = await downloadMedia(message);
             
             if (mediaInfo) {
-                // Buat URL publik untuk media
-                const mediaUrl = `${CONFIG.NGROK_URL}/media/${mediaInfo.filename}`;
+                // Buat URL publik untuk media menggunakan base URL yang terdeteksi
+                const baseURL = getBaseURL(currentReq);
+                const mediaUrl = `${baseURL}/media/${mediaInfo.filename}`;
                 
                 payload.message.media = {
                     url: mediaUrl,
@@ -343,6 +369,9 @@ function parseBody(req) {
 
 // API Server
 const server = http.createServer(async (req, res) => {
+    // Store current request for use in webhook handlers
+    global.currentRequest = req;
+    
     // Enable CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
