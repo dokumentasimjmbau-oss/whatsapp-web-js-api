@@ -546,11 +546,61 @@ const server = http.createServer(async (req, res) => {
     // Health check
     if (pathname === '/health' && req.method === 'GET') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ 
-            status: 'ok', 
+        res.end(JSON.stringify({
+            status: 'ok',
             timestamp: Date.now(),
             clientReady: client.info ? true : false
         }));
+        return;
+    }
+
+    // Serve media files
+    if (pathname.startsWith('/media/') && req.method === 'GET') {
+        const filename = pathname.replace('/media/', '');
+        const filePath = path.join(MEDIA_FOLDER, filename);
+        
+        // Security: prevent directory traversal
+        if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Invalid filename' }));
+            return;
+        }
+        
+        if (!fs.existsSync(filePath)) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'File not found' }));
+            return;
+        }
+        
+        try {
+            const file = fs.readFileSync(filePath);
+            const ext = path.extname(filename).toLowerCase();
+            
+            // Set content type based on extension
+            const contentTypes = {
+                '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg',
+                '.png': 'image/png',
+                '.gif': 'image/gif',
+                '.webp': 'image/webp',
+                '.mp4': 'video/mp4',
+                '.pdf': 'application/pdf',
+                '.mp3': 'audio/mpeg',
+                '.ogg': 'audio/ogg'
+            };
+            
+            const contentType = contentTypes[ext] || 'application/octet-stream';
+            
+            res.writeHead(200, {
+                'Content-Type': contentType,
+                'Cache-Control': 'public, max-age=86400' // Cache 24 hours
+            });
+            res.end(file);
+        } catch (err) {
+            console.error('❌ Error serving media:', err.message);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Error reading file' }));
+        }
         return;
     }
 
@@ -820,9 +870,11 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify({
         error: 'Endpoint not found',
         availableEndpoints: [
+            'GET /qr',
+            'GET /health',
+            'GET /media/:filename',
             'POST /send-message',
-            'POST /send-media',
-            'GET /health'
+            'POST /send-media'
         ]
     }));
 });
