@@ -39,16 +39,25 @@ git push -u origin main
 
 Tambahkan environment variables di Railway Dashboard:
 
-| Variable | Value | Keterangan |
-|----------|-------|------------|
-| `WEBHOOK_URL` | `https://cloud.activepieces.com/api/v1/webhooks/...` | URL webhook Activepieces |
-| `NGROK_URL` | (kosongkan/dari domain Railway) | Auto-generated |
+| Variable | Value | Keterangan | Required |
+|----------|-------|------------|----------|
+| `API_KEY` | `your-secret-api-key-here` | API key untuk autentikasi endpoint | **Wajib** |
+| `PORT` | `3001` | Port server | **Wajib** |
+| `WEBHOOK_URL` | `https://cloud.activepieces.com/api/v1/webhooks/...` | URL webhook Activepieces | Opsional |
 
 **Cara set:**
 1. Di project Railway, klik tab "Variables"
 2. Klik "New Variable"
 3. Masukkan nama dan value
 4. Railway akan auto-restart service
+
+**Generate API Key:**
+```bash
+# Generate random API key
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+**Catatan:** Jika `API_KEY` tidak di-set, endpoint kirim pesan akan terbuka (tidak aman untuk production).
 
 ### 4. Domain/URL
 
@@ -58,10 +67,14 @@ Railway akan generate URL otomatis:
 
 ### 5. QR Code Scan
 
-1. Buka logs di Railway dashboard
-2. QR code akan muncul di logs
-3. Scan dengan WhatsApp mobile
+1. Buka URL aplikasi Anda: `https://your-app.up.railway.app/qr`
+2. QR code akan ditampilkan di halaman web
+3. Scan dengan WhatsApp mobile:
+   - Buka WhatsApp → Menu (⋮) → Linked Devices → Link a Device
+   - Scan QR code di browser
 4. Session akan tersimpan otomatis
+
+**Catatan:** Jika QR code tidak muncul, refresh halaman atau cek logs di Railway dashboard.
 
 ### 6. Update Webhook URL
 
@@ -85,7 +98,12 @@ curl https://your-app.up.railway.app/health
 - Pastikan semua dependencies di package.json
 
 ### Session Lost
-- Scan QR ulang via Railway logs
+- Scan QR ulang via endpoint `/qr`
+
+### API Key Error (401 Unauthorized)
+- Pastikan `API_KEY` sudah di-set di Railway Variables
+- Pastikan header `Authorization: Bearer YOUR_API_KEY` ada di request
+- Untuk development tanpa API key, hapus variable `API_KEY`
 
 ## Limitations (Free Tier)
 

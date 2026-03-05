@@ -74,6 +74,53 @@ const CONFIG = {
 
 ---
 
+## Authentication
+
+Untuk keamanan, endpoint **POST /send-message** dan **POST /send-media** memerlukan API Key.
+
+### Setup API Key
+
+1. Set environment variable `API_KEY` di Railway Dashboard:
+   - Buka project di Railway
+   - Go to Variables tab
+   - Add `API_KEY` = `your-secret-api-key-here`
+   - Deploy ulang
+
+2. Gunakan API Key di request header:
+   ```
+   Authorization: Bearer YOUR_API_KEY
+   ```
+
+### Contoh Request dengan API Key
+
+```bash
+curl -X POST https://your-app.up.railway.app/send-message \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-secret-api-key" \
+  -d '{
+    "action": "sendText",
+    "to": "628123456789@c.us",
+    "message": "Hello!"
+  }'
+```
+
+### Error Response (Invalid API Key)
+
+```json
+{
+  "error": "Unauthorized",
+  "message": "Missing or invalid API key. Provide API key in Authorization header: Bearer YOUR_API_KEY"
+}
+```
+
+### Catatan
+
+- Jika `API_KEY` tidak di-set di environment variables, autentikasi akan dimatikan (development mode)
+- QR code endpoint (`/qr`) dan health check (`/health`) tetap terbuka untuk memudahkan setup
+- Incoming webhook dari WhatsApp tidak memerlukan API key karena datang dari server WhatsApp
+
+---
+
 ## API Endpoints
 
 ### 1. Health Check

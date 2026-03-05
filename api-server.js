@@ -9,6 +9,31 @@ const path = require('path');
 const API_PORT = process.env.PORT || 3001; // Use Railway's PORT env variable or default to 3001
 const MEDIA_FOLDER = './media';
 
+// Security Configuration
+const API_KEY = process.env.API_KEY;
+
+// Middleware to check API Key
+function authenticate(req, res, next) {
+    // Skip auth if no API_KEY is set (development mode)
+    if (!API_KEY) {
+        return next();
+    }
+    
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+    
+    if (!token || token !== API_KEY) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+            error: 'Unauthorized',
+            message: 'Missing or invalid API key. Provide API key in Authorization header: Bearer YOUR_API_KEY'
+        }));
+        return;
+    }
+    
+    next();
+}
+
 // Store current QR code data
 let currentQRCode = null;
 let qrCodeTimestamp = null;
@@ -453,8 +478,14 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
-    // Send message endpoint
+    // Send message endpoint (Protected with API Key)
     if (pathname === '/send-message' && req.method === 'POST') {
+        // Check API Key
+        const authResult = await new Promise((resolve) => {
+            authenticate(req, res, () => resolve(true));
+        });
+        if (!authResult) return;
+        
         try {
             const body = await parseBody(req);
             const { action, to, message, delay, simulateTyping, typingDuration, quotedMessageId, mentions } = body;
@@ -547,8 +578,14 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
-    // Send media endpoint
+    // Send media endpoint (Protected with API Key)
     if (pathname === '/send-media' && req.method === 'POST') {
+        // Check API Key
+        const authResult = await new Promise((resolve) => {
+            authenticate(req, res, () => resolve(true));
+        });
+        if (!authResult) return;
+        
         try {
             const body = await parseBody(req);
             const { action, to, type, mimetype, filename, data, caption, delay, simulateTyping, typingDuration, sendAsVoice, sendAsSticker, sendAsDocument, quotedMessageId } = body;
