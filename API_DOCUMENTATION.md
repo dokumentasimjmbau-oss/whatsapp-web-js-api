@@ -7,6 +7,8 @@ Dokumentasi lengkap untuk WhatsApp Web JS Media Server dengan webhook integratio
 - [Overview](#overview)
 - [Installation](#installation)
 - [Configuration](#configuration)
+- [Authentication](#authentication)
+- [Fetching Data Endpoints](#fetching-data-endpoints)
 - [API Endpoints](#api-endpoints)
 - [Webhook Format](#webhook-format)
 - [Sending Messages](#sending-messages-http-request-format)
@@ -118,6 +120,131 @@ curl -X POST https://your-app.up.railway.app/send-message \
 - Jika `API_KEY` tidak di-set di environment variables, autentikasi akan dimatikan (development mode)
 - QR code endpoint (`/qr`) dan health check (`/health`) tetap terbuka untuk memudahkan setup
 - Incoming webhook dari WhatsApp tidak memerlukan API key karena datang dari server WhatsApp
+
+---
+
+## Fetching Data Endpoints
+
+Endpoint berikut memerlukan **API Key** di header `Authorization: Bearer YOUR_API_KEY`.
+
+### 1. Get My Info
+**Endpoint:** `GET /me`
+
+**Description:** Mendapatkan informasi nomor WA yang sedang login
+
+**Response:**
+```json
+{
+  "success": true,
+  "user": {
+    "id": "62858101919954@c.us",
+    "number": "62858101919954",
+    "name": "Your Name",
+    "platform": "android",
+    "isBusiness": false,
+    "isEnterprise": false
+  }
+}
+```
+
+### 2. Get All Chats
+**Endpoint:** `GET /chats`
+
+**Description:** Mendapatkan semua chat (private + grup)
+
+**Response:**
+```json
+{
+  "success": true,
+  "count": 150,
+  "chats": [
+    {
+      "id": "628123456789@c.us",
+      "name": "John Doe",
+      "isGroup": false,
+      "unreadCount": 5
+    },
+    {
+      "id": "120363040848451142@g.us",
+      "name": "Group Name",
+      "isGroup": true,
+      "unreadCount": 12
+    }
+  ]
+}
+```
+
+### 3. Get All Groups
+**Endpoint:** `GET /groups`
+
+**Description:** Mendapatkan detail semua grup WA beserta participant list
+
+**Response:**
+```json
+{
+  "success": true,
+  "count": 10,
+  "groups": [
+    {
+      "id": "120363040848451142@g.us",
+      "name": "Nama Grup",
+      "description": "Deskripsi grup",
+      "participants": [
+        {
+          "id": "628123456789@c.us",
+          "isAdmin": true,
+          "isSuperAdmin": true
+        }
+      ],
+      "participantCount": 25
+    }
+  ]
+}
+```
+
+### 4. Get All Contacts
+**Endpoint:** `GET /contacts`
+
+**Description:** Mendapatkan semua kontak yang tersimpan di WhatsApp
+
+**Response:**
+```json
+{
+  "success": true,
+  "count": 200,
+  "contacts": [
+    {
+      "id": "628123456789@c.us",
+      "number": "628123456789",
+      "name": "Contact Name",
+      "pushname": "Display Name",
+      "isBusiness": false,
+      "isMyContact": true
+    }
+  ]
+}
+```
+
+### 5. Get All Channels
+**Endpoint:** `GET /channels`
+
+**Description:** Mendapatkan semua channel/newsletter yang diikuti
+
+**Response:**
+```json
+{
+  "success": true,
+  "count": 5,
+  "channels": [
+    {
+      "id": "123456789012345678@newsletter",
+      "name": "Channel Name",
+      "description": "Channel description",
+      "subscriberCount": 1000
+    }
+  ]
+}
+```
 
 ---
 
