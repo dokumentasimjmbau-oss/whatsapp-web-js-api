@@ -30,9 +30,10 @@ Dokumentasi lengkap untuk WhatsApp Web JS Media Server dengan webhook integratio
 
 Project ini menyediakan:
 - WhatsApp Web Client untuk menerima pesan
-- File Server untuk serve media (port 3002)
-- Webhook integration ke Activepieces
+- API Server dengan webhook integration ke Activepieces
 - Session persistence (tidak perlu scan QR berulang)
+- Auto-cleanup media files (24 jam)
+- API Key authentication untuk keamanan
 
 ---
 
@@ -45,34 +46,34 @@ cd whatsapp-web-js-dokumentasimjmbau
 # Install dependencies
 npm install
 
-# Jalankan file server (Terminal 1)
-node server.js
-
-# Jalankan WhatsApp client (Terminal 2)
-node index.js
+# Jalankan API Server
+node api-server.js
 ```
+
+Akses QR code scanner di: `http://localhost:3001/qr`
 
 ---
 
 ## Configuration
 
-Edit `index.js` untuk mengubah konfigurasi:
+Konfigurasi diatur melalui **Environment Variables**:
 
-```javascript
-const CONFIG = {
-    WEBHOOK_URL: 'https://cloud.activepieces.com/api/v1/webhooks/49mCt0eLl7F1pA7ey4dFH',
-    MEDIA_FOLDER: './media',
-    NGROK_URL: 'https://agaze-elizabeth-groovelike.ngrok-free.dev'
-};
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `API_KEY` | **Yes** | - | API key untuk authentication |
+| `PORT` | No | 3001 | Port server |
+| `WEBHOOK_URL` | No | (hardcoded) | URL webhook Activepieces |
+| `RAILWAY_PUBLIC_DOMAIN` | Auto | - | Auto-generated oleh Railway |
+
+**Untuk Railway Deployment:**
+Set variables di Railway Dashboard → Variables tab.
+
+**Untuk Local Development:**
+Buat file `.env` atau set variables di terminal:
+```bash
+export API_KEY=your-secret-key
+export PORT=3001
 ```
-
-### Config Options
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `WEBHOOK_URL` | string | URL webhook Activepieces |
-| `MEDIA_FOLDER` | string | Path folder penyimpanan media |
-| `NGROK_URL` | string | Public URL dari ngrok |
 
 ---
 
@@ -848,32 +849,32 @@ Jika webhook gagal terkirim, error akan di-log ke console:
 
 ## Examples
 
+### Base URL
+- **Local:** `http://localhost:3001`
+- **Railway:** `https://whatsapp-web-js-api-production-2cf4.up.railway.app`
+
 ### cURL - Health Check
 ```bash
-curl https://agaze-elizabeth-groovelike.ngrok-free.dev/health
-```
-
-### cURL - List Media
-```bash
-curl https://agaze-elizabeth-groovelike.ngrok-free.dev/media
+curl https://whatsapp-web-js-api-production-2cf4.up.railway.app/health
 ```
 
 ### cURL - Download Media
 ```bash
-curl https://agaze-elizabeth-groovelike.ngrok-free.dev/media/A550D9DE363C51A836B533ACF708401B_1772590971464.jpeg \
+curl https://whatsapp-web-js-api-production-2cf4.up.railway.app/media/A550D9DE363C51A836B533ACF708401B_1772590971464.jpeg \
   --output downloaded_image.jpeg
 ```
 
 ### JavaScript - Fetch Media
 ```javascript
-const response = await fetch('https://agaze-elizabeth-groovelike.ngrok-free.dev/media/filename.jpeg');
+const response = await fetch('https://whatsapp-web-js-api-production-2cf4.up.railway.app/media/filename.jpeg');
 const blob = await response.blob();
 ```
 
-### cURL - Send Text Message
+### cURL - Send Text Message (with API Key)
 ```bash
-curl -X POST http://localhost:3001/send-message \
+curl -X POST https://whatsapp-web-js-api-production-2cf4.up.railway.app/send-message \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer wa-api-key-2025-secure-token-xyz789" \
   -d '{
     "action": "sendText",
     "to": "628123456789@c.us",
@@ -985,21 +986,41 @@ Body (JSON):
 
 ---
 
-## Ngrok Setup
+## Deployment
 
-Untuk public URL:
+### Railway Deployment (Recommended)
 
+Aplikasi ini sudah di-deploy di Railway dengan URL permanen:
+```
+https://whatsapp-web-js-api-production-2cf4.up.railway.app
+```
+
+**Fitur Railway:**
+- ✅ URL permanen (tidak berubah seperti ngrok)
+- ✅ Auto-restart jika crash
+- ✅ 24/7 uptime (dengan ping regular)
+- ✅ Environment variables management
+- ✅ Auto-cleanup media files (24 jam)
+
+**Cara Deploy ke Railway:**
+Lihat `RAILWAY_DEPLOY.md` untuk panduan lengkap.
+
+### Local Development
+
+Untuk development lokal:
 ```bash
-# Install ngrok (jika belum)
-# https://ngrok.com/download
+# Install dependencies
+npm install
 
-# Jalankan ngrok
-ngrok http 3002
+# Set environment variables
+export API_KEY=your-secret-key
+export PORT=3001
 
-# Copy URL https yang muncul
-# Example: https://xxxxx.ngrok-free.dev
+# Jalankan server
+node api-server.js
 
-# Update NGROK_URL di index.js
+# Akses QR scanner
+curl http://localhost:3001/qr
 ```
 
 ---
@@ -1008,9 +1029,10 @@ ngrok http 3002
 
 | Command | Description |
 |---------|-------------|
-| `npm start` | Jalankan WhatsApp client |
-| `npm run server` | Jalankan file server |
-| `npm run dev` | Jalankan client + server bersamaan |
+| `npm start` | Jalankan API server (api-server.js) |
+| `node api-server.js` | Jalankan API server secara langsung |
+
+**Catatan:** Project ini sekarang menggunakan single file `api-server.js` yang menggabungkan WhatsApp client dan API server.
 
 ---
 
@@ -1020,20 +1042,27 @@ ngrok http 3002
 - Session tersimpan di `.wwebjs_auth/`
 - Jangan hapus folder ini
 - Scan sekali, kemudian session persist
+- Jika session hilang, deploy ulang ke Railway atau hapus folder `.wwebjs_auth/` untuk scan ulang
 
 ### Media Tidak Tersimpan
 - Cek folder `media/` ada dan writable
 - Cek permission folder
+- Di Railway: storage bersifat ephemeral (hilang saat redeploy), gunakan endpoint `/media/:filename` segera
 
 ### Webhook Tidak Terkirim
-- Cek URL webhook di konfigurasi
-- Cek koneksi internet
-- Lihat log error di terminal
+- Cek `WEBHOOK_URL` di Railway Variables
+- Cek URL webhook valid di Activepieces
+- Lihat log error di Railway dashboard
 
-### Ngrok URL Berubah
-- URL ngrok free berubah setiap restart
-- Update `NGROK_URL` di `index.js`
-- Restart WhatsApp client
+### API Key Error (401 Unauthorized)
+- Pastikan `API_KEY` sudah di-set di Railway Variables
+- Pastikan header `Authorization: Bearer YOUR_API_KEY` ada di request
+- Untuk development tanpa API key, hapus variable `API_KEY`
+
+### Media URL Tidak Bisa Diakses
+- Pastikan menggunakan Railway domain, bukan ngrok
+- URL format: `https://whatsapp-web-js-api-production-2cf4.up.railway.app/media/filename`
+- Media hanya tersedia selama 24 jam (auto-cleanup)
 
 ---
 
