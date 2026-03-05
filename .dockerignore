@@ -1,0 +1,17 @@
+node_modules
+npm-debug.log
+.wwebjs_auth
+.wwebjs_cache
+media/*.jpeg
+media/*.jpg
+media/*.png
+media/*.mp4
+media/*.pdf
+media/*.mp3
+media/temp_*
+.git
+.gitignore
+README.md
+API_DOCUMENTATION.md
+RAILWAY_DEPLOY.md
+*.md
