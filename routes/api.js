@@ -1,0 +1,414 @@
+const express = require('express');
+const router = express.Router();
+const { MessageMedia } = require('whatsapp-web.js');
+const fs = require('fs');
+const path = require('path');
+const axios = require('axios');
+const { CONFIG, getBaseURL } = require('../config');
+const { authenticateAPI } = require('../middleware/auth');
+
+// Download file from URL
+async function downloadFileFromURL(url) {
+    try {
+        console.log(`📥 Downloading file from: ${url}`);
+        
+        // Check file size first with HEAD request
+        try {
+            const headResponse = await axios.head(url, {
+                timeout: 10000,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+            });
+            
+            const contentLength = headResponse.headers['content-length'];
+            if (contentLength && parseInt(contentLength) > 50 * 1024 * 1024) {
+                throw new Error(`File too large: ${(parseInt(contentLength) / 1024 / 1024).toFixed(2)}MB. Max 50MB allowed.`);
+            }
+        } catch (headError) {
+            console.log('⚠️ Could not get file size, continuing anyway...');
+        }
+        
+        const response = await axios.get(url, {
+            responseType: 'arraybuffer',
+            timeout: 60000,
+            maxContentLength: 50 * 1024 * 1024,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+        });
+        
+        const contentType = response.headers['content-type'];
+        const base64 = Buffer.from(response.data, 'binary').toString('base64');
+        
+        const urlObj = new URL(url);
+        const pathname = urlObj.pathname;
+        const filename = pathname.split('/').pop() || 'file';
+        
+        console.log(`✅ File downloaded: ${filename}, Size: ${(base64.length / 1024).toFixed(2)}KB`);
+        
+        return {
+            data: base64,
+            mimetype: contentType || 'application/octet-stream',
+            filename: filename
+        };
+    } catch (error) {
+        console.error('❌ Error downloading file:', error.message);
+        throw new Error(`Failed to download file from URL: ${error.message}`);
+    }
+}
+
+// Get all chats
+router.get('/chats', authenticateAPI, async (req, res) => {
+    try {
+        const client = req.app.get('whatsappClient');
+        if (!client || !client.info) {
+            return res.status(503).json({ error: 'WhatsApp client not ready' });
+        }
+
+        const chats = await client.getChats();
+        const formattedChats = chats.map(chat => ({
+            id: chat.id._serialized,
+            name: chat.name,
+            isGroup: chat.isGroup,
+            isMuted: chat.isMuted,
+            unreadCount: chat.unreadCount,
+            timestamp: chat.timestamp,
+            pinned: chat.pinned,
+            archived: chat.archived
+        }));
+
+        res.json({
+            success: true,
+            count: formattedChats.length,
+            chats: formattedChats
+        });
+    } catch (error) {
+        console.error('❌ Error fetching chats:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Get all groups
+router.get('/groups', authenticateAPI, async (req, res) => {
+    try {
+        const client = req.app.get('whatsappClient');
+        if (!client || !client.info) {
+            return res.status(503).json({ error: 'WhatsApp client not ready' });
+        }
+
+        const chats = await client.getChats();
+        const groups = chats.filter(chat => chat.isGroup);
+        
+        const formattedGroups = await Promise.all(groups.map(async group => {
+            let participants = [];
+            try {
+                participants = group.participants.map(p => ({
+                    id: p.id._serialized,
+                    isAdmin: p.isAdmin,
+                    isSuperAdmin: p.isSuperAdmin
+                }));
+            } catch (e) {}
+
+            return {
+                id: group.id._serialized,
+                name: group.name,
+                description: group.description || null,
+                participants: participants,
+                participantCount: participants.length,
+                isMuted: group.isMuted,
+                unreadCount: group.unreadCount,
+                timestamp: group.timestamp
+            };
+        }));
+
+        res.json({
+            success: true,
+            count: formattedGroups.length,
+            groups: formattedGroups
+        });
+    } catch (error) {
+        console.error('❌ Error fetching groups:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Get all contacts
+router.get('/contacts', authenticateAPI, async (req, res) => {
+    try {
+        const client = req.app.get('whatsappClient');
+        if (!client || !client.info) {
+            return res.status(503).json({ error: 'WhatsApp client not ready' });
+        }
+
+        const contacts = await client.getContacts();
+        const formattedContacts = contacts
+            .filter(contact => contact.number)
+            .map(contact => ({
+                id: contact.id._serialized,
+                number: contact.number,
+                name: contact.name || contact.pushname || null,
+                pushname: contact.pushname || null,
+                isBusiness: contact.isBusiness,
+                isMyContact: contact.isMyContact,
+                isUser: contact.isUser
+            }));
+
+        res.json({
+            success: true,
+            count: formattedContacts.length,
+            contacts: formattedContacts
+        });
+    } catch (error) {
+        console.error('❌ Error fetching contacts:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Get all channels
+router.get('/channels', authenticateAPI, async (req, res) => {
+    try {
+        const client = req.app.get('whatsappClient');
+        if (!client || !client.info) {
+            return res.status(503).json({ error: 'WhatsApp client not ready' });
+        }
+
+        const chats = await client.getChats();
+        const channels = chats.filter(chat =>
+            chat.id && chat.id._serialized && chat.id._serialized.includes('@newsletter')
+        );
+
+        const formattedChannels = channels.map(channel => ({
+            id: channel.id?._serialized || 'unknown',
+            name: channel.name || 'Unknown Channel',
+            description: channel.description || null,
+            subscriberCount: channel.subscriberCount || null,
+            isMuted: channel.isMuted || false,
+            unreadCount: channel.unreadCount || 0
+        }));
+
+        res.json({
+            success: true,
+            count: formattedChannels.length,
+            channels: formattedChannels
+        });
+    } catch (error) {
+        console.error('❌ Error fetching channels:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Get info about logged in user
+router.get('/me', authenticateAPI, async (req, res) => {
+    try {
+        const client = req.app.get('whatsappClient');
+        if (!client || !client.info) {
+            return res.status(503).json({ error: 'WhatsApp client not ready' });
+        }
+
+        const me = client.info;
+        
+        res.json({
+            success: true,
+            user: {
+                id: me.wid._serialized,
+                number: me.wid.user,
+                name: me.pushname || null,
+                platform: me.platform,
+                isBusiness: me.isBusiness || false
+            }
+        });
+    } catch (error) {
+        console.error('❌ Error fetching user info:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Send message
+router.post('/send-message', authenticateAPI, async (req, res) => {
+    try {
+        const client = req.app.get('whatsappClient');
+        if (!client || !client.info) {
+            return res.status(503).json({ error: 'WhatsApp client not ready' });
+        }
+
+        const { action, to, message, delay, simulateTyping, typingDuration, quotedMessageId, mentions } = req.body;
+
+        if (!to || !message) {
+            return res.status(400).json({ error: 'Missing required fields: to, message' });
+        }
+
+        // Simulate typing if requested
+        if (simulateTyping && typingDuration) {
+            const chat = await client.getChatById(to);
+            await chat.sendStateTyping();
+            await new Promise(resolve => setTimeout(resolve, typingDuration));
+            await chat.clearState();
+        }
+
+        // Delay if requested
+        if (delay && delay > 0) {
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+
+        let sentMessage;
+
+         if (action === 'sendReply' && quotedMessageId) {
+            try {
+                // Try to get message by id (support both id formats)
+                let quotedMsg;
+                
+                try {
+                    quotedMsg = await client.getMessageById(quotedMessageId);
+                } catch (error) {
+                    console.log(`⚠️ Fallback: Trying to find message with serialized ID`);
+                    
+                    // Fallback: Search through messages in the chat
+                    const chat = await client.getChatById(to);
+                    const messages = await chat.fetchMessages({ limit: 50 });
+                    quotedMsg = messages.find(msg => 
+                        msg.id._serialized === quotedMessageId || 
+                        msg.id.id === quotedMessageId
+                    );
+                    
+                    if (!quotedMsg) {
+                        throw new Error('Message not found');
+                    }
+                }
+                
+                sentMessage = await quotedMsg.reply(message, to);
+            } catch (replyError) {
+                console.error('❌ Error replying to message:', replyError);
+                return res.status(400).json({ 
+                    error: 'Failed to reply. Make sure quotedMessageId is valid.',
+                    hint: 'Use serialized message ID from webhook',
+                    details: replyError.message
+                });
+            }
+        } else {
+            const options = {};
+            if (mentions && Array.isArray(mentions)) {
+                options.mentions = mentions;
+            }
+            
+            sentMessage = await client.sendMessage(to, message, options);
+        }
+
+        res.json({
+            success: true,
+            messageId: sentMessage.id.id,
+            timestamp: Date.now(),
+            to: to,
+            delayed: delay ? true : false,
+            typingSimulated: simulateTyping ? true : false
+        });
+
+    } catch (error) {
+        console.error('❌ Error sending message:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Send media
+router.post('/send-media', authenticateAPI, async (req, res) => {
+    try {
+        const client = req.app.get('whatsappClient');
+        if (!client || !client.info) {
+            return res.status(503).json({ error: 'WhatsApp client not ready' });
+        }
+
+        const { to, type, mimetype, filename, data, caption, delay, simulateTyping, typingDuration, sendAsVoice, sendAsDocument, quotedMessageId } = req.body;
+
+        if (!to || !data) {
+            return res.status(400).json({ error: 'Missing required fields: to, data' });
+        }
+
+        // Simulate typing if requested
+        if (simulateTyping && typingDuration) {
+            const chat = await client.getChatById(to);
+            await chat.sendStateTyping();
+            await new Promise(resolve => setTimeout(resolve, typingDuration));
+            await chat.clearState();
+        }
+
+        // Delay if requested
+        if (delay && delay > 0) {
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+
+        let mediaData, mediaMimetype, mediaFilename;
+
+        // Check if data is URL or base64
+        if (data.startsWith('http://') || data.startsWith('https://')) {
+            try {
+                const downloaded = await downloadFileFromURL(data);
+                mediaData = downloaded.data;
+                mediaMimetype = mimetype || downloaded.mimetype;
+                mediaFilename = filename || downloaded.filename;
+            } catch (downloadError) {
+                return res.status(400).json({ 
+                    error: 'Failed to download file from URL',
+                    details: downloadError.message
+                });
+            }
+        } else {
+            mediaData = data;
+            mediaMimetype = mimetype;
+            mediaFilename = filename || 'file';
+        }
+
+        if (!mediaMimetype) {
+            return res.status(400).json({ error: 'Missing mimetype' });
+        }
+
+        // Create MessageMedia
+        const media = new MessageMedia(mediaMimetype, mediaData, mediaFilename);
+
+        // Send options
+        const options = { caption: caption || '' };
+        if (sendAsVoice) options.sendAudioAsVoice = true;
+        if (sendAsDocument) options.sendMediaAsDocument = true;
+
+        // Save to temp file (more reliable)
+        const tempFilePath = path.join(CONFIG.MEDIA_FOLDER, `temp_${Date.now()}_${mediaFilename}`);
+        fs.writeFileSync(tempFilePath, mediaData, 'base64');
+        
+        const mediaFromFile = MessageMedia.fromFilePath(tempFilePath);
+        mediaFromFile.filename = mediaFilename;
+        
+        let sentMessage;
+        
+        if (quotedMessageId) {
+            try {
+                const quotedMsg = await client.getMessageById(quotedMessageId);
+                sentMessage = await quotedMsg.reply(mediaFromFile, to, { caption: caption || '' });
+            } catch (replyError) {
+                sentMessage = await client.sendMessage(to, mediaFromFile, options);
+            }
+        } else {
+            sentMessage = await client.sendMessage(to, mediaFromFile, options);
+        }
+        
+        // Clean up temp file
+        try {
+            fs.unlinkSync(tempFilePath);
+        } catch (cleanupError) {}
+
+        res.json({
+            success: true,
+            messageId: sentMessage.id.id,
+            timestamp: Date.now(),
+            to: to,
+            filename: mediaFilename,
+            mimetype: mediaMimetype,
+            delayed: delay ? true : false,
+            typingSimulated: simulateTyping ? true : false
+        });
+
+    } catch (error) {
+        console.error('❌ Error sending media:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+module.exports = router;

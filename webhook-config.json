@@ -1,0 +1,1 @@
+{"url":"https://cloud.activepieces.com/api/v1/webhooks/49mCt0eLl7F1pA7ey4dFH","enabled":true,"events":{"message_create":true,"message_revoke":true,"group_join":false,"group_leave":false},"secret":"","retryAttempts":3,"timeout":30000} 
