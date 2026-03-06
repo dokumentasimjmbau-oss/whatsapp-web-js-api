@@ -1,9 +1,15 @@
 # Use Node.js LTS version
 FROM node:18-slim
 
-# Install Chrome dependencies for Puppeteer
+# Install Google Chrome Stable for video/GIF support
+# Note: Chromium doesn't support H.264/AAC due to licensing, need Google Chrome
 RUN apt-get update && apt-get install -y \
-    chromium \
+    wget \
+    gnupg \
+    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable \
     fonts-liberation \
     libappindicator3-1 \
     libasound2 \
@@ -38,13 +44,12 @@ RUN apt-get update && apt-get install -y \
     libxss1 \
     libxtst6 \
     lsb-release \
-    wget \
     xdg-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Set environment variable for Puppeteer to use system Chrome
+# Set environment variable for Puppeteer to use Google Chrome
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
 
 # Create app directory
 WORKDIR /app

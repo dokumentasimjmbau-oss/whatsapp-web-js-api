@@ -8,13 +8,16 @@ Dokumentasi lengkap untuk WhatsApp Web JS Media Server dengan webhook integratio
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Authentication](#authentication)
+- [Admin Dashboard](#admin-dashboard)
 - [Fetching Data Endpoints](#fetching-data-endpoints)
 - [API Endpoints](#api-endpoints)
 - [Webhook Format](#webhook-format)
 - [Sending Messages](#sending-messages-http-request-format)
   - [Kirim Pesan Teks](#1-kirim-pesan-teks)
   - [Kirim Media/File](#2-kirim-mediafile)
+  - [Kirim Video](#kirim-video-dari-url)
   - [Kirim Status (Story)](#3-kirim-status-story)
+- [Sending Video dengan Activepieces](#-sending-video-dengan-activepieces)
   - [Format ID Chat](#4-format-id-chat)
   - [Kirim dengan Reply](#5-kirim-pesan-dengan-reply)
   - [Kirim dengan Mention](#6-kirim-pesan-dengan-mention)
@@ -61,6 +64,9 @@ Konfigurasi diatur melalui **Environment Variables**:
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `API_KEY` | **Yes** | - | API key untuk authentication |
+| `ADMIN_USERNAME` | No | admin | Username untuk admin dashboard |
+| `ADMIN_PASSWORD` | No | admin123 | Password untuk admin dashboard |
+| `SESSION_SECRET` | No | (auto) | Secret key untuk session encryption |
 | `PORT` | No | 3001 | Port server |
 | `WEBHOOK_URL` | No | (hardcoded) | URL webhook Activepieces |
 | `RAILWAY_PUBLIC_DOMAIN` | Auto | - | Auto-generated oleh Railway |
@@ -72,8 +78,13 @@ Set variables di Railway Dashboard → Variables tab.
 Buat file `.env` atau set variables di terminal:
 ```bash
 export API_KEY=your-secret-key
+export ADMIN_USERNAME=admin
+export ADMIN_PASSWORD=your-secure-password
+export SESSION_SECRET=your-session-secret-key
 export PORT=3001
 ```
+
+**⚠️ Penting:** Ganti default password `admin123` dengan password yang kuat di production!
 
 ---
 
@@ -121,6 +132,73 @@ curl -X POST https://your-app.up.railway.app/send-message \
 - Jika `API_KEY` tidak di-set di environment variables, autentikasi akan dimatikan (development mode)
 - QR code endpoint (`/qr`) dan health check (`/health`) tetap terbuka untuk memudahkan setup
 - Incoming webhook dari WhatsApp tidak memerlukan API key karena datang dari server WhatsApp
+
+---
+
+## Admin Dashboard
+
+API WhatsApp Web JS sekarang dilengkapi dengan **Admin Dashboard** yang dapat diakses melalui browser untuk memudahkan manajemen dan monitoring.
+
+### Login Admin
+
+**URL:** `GET /admin/login`
+
+**Default Credentials:**
+- Username: `admin`
+- Password: `admin123` ⚠️ **Ganti segera di production!**
+
+**Cara mengganti credentials:**
+Set environment variables di Railway:
+```
+ADMIN_USERNAME=your-username
+ADMIN_PASSWORD=your-strong-password
+SESSION_SECRET=random-secret-string
+```
+
+### Dashboard Features
+
+Setelah login, dashboard menampilkan:
+
+#### 1. Connection Status
+- Status koneksi WhatsApp (Connected/Disconnected)
+- Informasi user yang terhubung (nama, nomor, platform)
+
+#### 2. QR Code Scanner
+- Jika belum terhubung: Menampilkan QR code untuk scan
+- Auto-refresh status setiap 5 detik
+- Petunjuk cara scan QR code
+
+#### 3. Statistics Dashboard
+| Statistic | Description |
+|-----------|-------------|
+| Total Chats | Jumlah semua chat (private + grup) |
+| Groups | Jumlah grup WhatsApp |
+| Contacts | Jumlah kontak tersimpan |
+| Media Files | Jumlah file di folder media |
+
+#### 4. API Endpoints Reference
+Daftar semua endpoint API dengan method dan deskripsi.
+
+#### 5. API Key Display
+Menampilkan API key yang aktif untuk copy-paste ke integrations.
+
+### Accessing Dashboard
+
+**Local Development:**
+```
+http://localhost:3001/admin/login
+```
+
+**Railway Deployment:**
+```
+https://whatsapp-web-js-api-production-2cf4.up.railway.app/admin/login
+```
+
+### Logout
+
+Klik tombol **Logout** di navbar untuk keluar dari dashboard.
+
+Session akan otomatis expire setelah 24 jam.
 
 ---
 
@@ -456,8 +534,10 @@ Content-Type: application/json
 
 ---
 
-#### Ke Channel (Newsletter)
+#### Ke Channel (Newsletter) - ⚠️ Limited Support
 **Endpoint:** `POST /send-message`
+
+**⚠️ IMPORTANT:** Sending messages TO channels/newsletters is **NOT fully supported** by whatsapp-web.js library. You can receive messages from channels, but sending TO channels has limitations.
 
 **Request Body:**
 ```json
@@ -467,6 +547,20 @@ Content-Type: application/json
   "message": "Halo subscribers!"
 }
 ```
+
+**Expected Error:**
+```json
+{
+  "error": "Failed to send to Channel/Newsletter (123456789012345678@newsletter). This feature is not fully supported by whatsapp-web.js library...",
+  "type": "CHANNEL_NOT_SUPPORTED",
+  "suggestion": "Consider using regular groups (g.us) for sending messages, or check if you are the channel admin."
+}
+```
+
+**Workaround:**
+- Use regular WhatsApp Groups (`@g.us`) instead of channels for sending messages
+- Channels are primarily for receiving updates, not for bot interactions
+- Only channel admins can post to channels via WhatsApp mobile app
 
 ---
 
@@ -521,6 +615,43 @@ Content-Type: application/json
   "type": "video",
   "data": "https://example.com/video.mp4",
   "caption": "Ini caption video"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "messageId": "ABC123DEF456",
+  "timestamp": 1772590971,
+  "to": "628123456789@c.us",
+  "mediaType": "video",
+  "filename": "video.mp4",
+  "mimetype": "video/mp4"
+}
+```
+
+**⚠️ Catatan Penting untuk Video:**
+- Server menggunakan **Google Chrome Stable** (bukan Chromium) untuk mendukung format video H.264/AAC
+- Format yang didukung: MP4 (H.264 codec), MOV
+- Ukuran maksimal: 50MB
+- Video akan diproses dan dikirim sebagai file attachment
+
+---
+
+#### Kirim Video dengan Base64
+**Endpoint:** `POST /send-media`
+
+**Request Body:**
+```json
+{
+  "action": "sendMedia",
+  "to": "628123456789@c.us",
+  "type": "video",
+  "mimetype": "video/mp4",
+  "filename": "video.mp4",
+  "data": "base64_encoded_video_data_here",
+  "caption": "Ini video dari base64"
 }
 ```
 
@@ -970,6 +1101,7 @@ Method: POST
 URL: http://localhost:3001/send-media
 Headers:
   Content-Type: application/json
+  Authorization: Bearer YOUR_API_KEY
 
 Body (JSON):
 {
@@ -983,6 +1115,82 @@ Body (JSON):
   "typingDuration": 2000
 }
 ```
+
+---
+
+## 🎬 Sending Video dengan Activepieces
+
+### Overview
+WhatsApp Web JS API mendukung pengiriman video MP4 dengan codec H.264. Server menggunakan Google Chrome Stable (bukan Chromium) untuk memastikan video dapat diproses dengan benar.
+
+### Activepieces - Send Video from URL
+```
+Method: POST
+URL: https://whatsapp-web-js-api-production.up.railway.app/send-media
+Headers:
+  Content-Type: application/json
+  Authorization: Bearer YOUR_API_KEY
+
+Body (JSON):
+{
+  "action": "sendMedia",
+  "to": "628123456789@c.us",
+  "type": "video",
+  "data": "https://example.com/video.mp4",
+  "caption": "Check out this video!",
+  "simulateTyping": true,
+  "typingDuration": 3000
+}
+```
+
+### Activepieces - Send Video dengan Reply
+```
+Method: POST
+URL: https://whatsapp-web-js-api-production.up.railway.app/send-media
+Headers:
+  Content-Type: application/json
+  Authorization: Bearer YOUR_API_KEY
+
+Body (JSON):
+{
+  "action": "sendMedia",
+  "to": "{{message.from}}",
+  "type": "video",
+  "data": "https://example.com/video.mp4",
+  "caption": "Ini video yang Anda minta",
+  "quotedMessageId": "{{message.serialized}}",
+  "simulateTyping": true,
+  "typingDuration": 2000
+}
+```
+
+### Activepieces - Send Video ke Group
+```
+Method: POST
+URL: https://whatsapp-web-js-api-production.up.railway.app/send-media
+Headers:
+  Content-Type: application/json
+  Authorization: Bearer YOUR_API_KEY
+
+Body (JSON):
+{
+  "action": "sendMedia",
+  "to": "120363040848451142@g.us",
+  "type": "video",
+  "data": "https://example.com/video.mp4",
+  "caption": "Video untuk semua anggota grup",
+  "simulateTyping": true,
+  "typingDuration": 3000
+}
+```
+
+### Video Requirements
+| Parameter | Value | Keterangan |
+|-----------|-------|------------|
+| Format | MP4, MOV | MP4 (H.264 codec) direkomendasikan |
+| Max Size | 50MB | Batasan WhatsApp Web |
+| Duration | Unlimited | Tergantung ukuran file |
+| Caption | Max 1024 chars | Teks keterangan video |
 
 ---
 
@@ -1063,6 +1271,33 @@ curl http://localhost:3001/qr
 - Pastikan menggunakan Railway domain, bukan ngrok
 - URL format: `https://whatsapp-web-js-api-production-2cf4.up.railway.app/media/filename`
 - Media hanya tersedia selama 24 jam (auto-cleanup)
+
+### Video Tidak Bisa Dikirim / Format Tidak Didukung
+**Error:** Video gagal terkirim atau penerima tidak bisa memutar video
+
+**Solusi:**
+- ✅ Pastikan format video adalah **MP4 dengan codec H.264** (paling kompatibel)
+- ✅ Ukuran video maksimal **50MB**
+- ✅ Cek log server: pastikan ada pesan `✅ Google Chrome detected: /usr/bin/google-chrome-stable`
+- ✅ Jika log menunjukkan Chromium (bukan Chrome), deploy ulang ke Railway
+- ✅ Untuk format lain (MOV, AVI), konversi ke MP4 terlebih dahulu
+
+**Cek Status Server:**
+```bash
+curl https://whatsapp-web-js-api-production.up.railway.app/health
+```
+
+**Konversi Video ke MP4 (H.264):**
+```bash
+# Menggunakan FFmpeg
+ffmpeg -i input.mov -c:v libx264 -c:a aac -strict experimental output.mp4
+```
+
+### Video Terkirim Tapi Tidak Bisa Diputar di WhatsApp
+- WhatsApp Web mungkin perlu waktu untuk memproses video
+- Coba kirim ulang setelah beberapa menit
+- Pastikan video tidak corrupt
+- Test dengan video MP4 yang diketahui berfungsi
 
 ---
 
