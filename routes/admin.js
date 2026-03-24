@@ -118,6 +118,13 @@ router.post('/refresh-qr', requireAuth, async (req, res) => {
     }
     
     try {
+        // Delete old QR code file to force new QR generation
+        const qrPath = path.join(CONFIG.MEDIA_FOLDER, 'qrcode.png');
+        if (fs.existsSync(qrPath)) {
+            fs.unlinkSync(qrPath);
+            console.log('🗑️ Old QR code file deleted');
+        }
+        
         // If client is already ready, logout first to get new QR
         if (client.info) {
             console.log('🔄 Logging out to generate new QR code...');
@@ -127,11 +134,71 @@ router.post('/refresh-qr', requireAuth, async (req, res) => {
             console.log('🔄 QR refresh requested - new QR will be generated automatically');
         }
         
-        res.json({ success: true, message: 'QR code refresh initiated. Please wait...' });
+        res.json({ success: true, message: 'QR code refresh initiated. Please wait for new QR...' });
     } catch (err) {
         console.error('Error refreshing QR:', err);
         res.json({ success: false, error: err.message });
     }
+});
+
+// QR Status (for polling from dashboard) - no auth required for polling
+router.get('/qr-status', async (req, res) => {
+    const client = req.app.get('whatsappClient');
+    
+    if (!client) {
+        return res.json({ 
+            isConnected: false, 
+            hasQR: false, 
+            qrCode: null, 
+            timestamp: null 
+        });
+    }
+    
+    const isConnected = client && client.info ? true : false;
+    
+    if (isConnected) {
+        return res.json({
+            isConnected: true,
+            hasQR: false,
+            qrCode: null,
+            timestamp: null,
+            clientInfo: {
+                pushname: client.info.pushname,
+                wid: client.info.wid.user,
+                platform: client.info.platform
+            }
+        });
+    }
+    
+    // Get QR code from file - ensure clean base64
+    let qrCode = null;
+    let timestamp = null;
+    
+    const qrPath = path.join(CONFIG.MEDIA_FOLDER, 'qrcode.png');
+    if (fs.existsSync(qrPath)) {
+        try {
+            // Read file and ensure clean base64 (remove any whitespace/newlines)
+            const fileBuffer = fs.readFileSync(qrPath);
+            qrCode = fileBuffer.toString('base64').replace(/\s/g, '');
+            
+            // Get file modification time as timestamp
+            const stats = fs.statSync(qrPath);
+            timestamp = stats.mtime.getTime();
+            
+            console.log('📱 QR Status: QR code file found, base64 length:', qrCode.length, 'timestamp:', new Date(timestamp).toLocaleString());
+        } catch (err) {
+            console.error('Error reading QR file:', err);
+        }
+    } else {
+        console.log('📱 QR Status: QR code file not found');
+    }
+    
+    res.json({
+        isConnected: false,
+        hasQR: !!qrCode,
+        qrCode: qrCode,
+        timestamp: timestamp
+    });
 });
 
 // Admin Dashboard

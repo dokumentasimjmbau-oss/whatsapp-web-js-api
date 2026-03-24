@@ -253,7 +253,42 @@ router.post('/send-message', authenticateAPI, async (req, res) => {
 
         let sentMessage;
 
-         if (action === 'sendReply' && quotedMessageId) {
+        // Check if target is a channel (@newsletter)
+        const isChannel = to.includes('@newsletter');
+        
+        if (isChannel) {
+            // For channels, try different approaches
+            try {
+                // Method 1: Try to get the chat and use channel.sendMessage()
+                const chat = await client.getChatById(to);
+                sentMessage = await chat.sendMessage(message);
+            } catch (channelError) {
+                console.log('⚠️ Method 1 failed for channel, trying method 2:', channelError.message);
+                try {
+                    // Method 2: Try using client.sendMessage directly (works in some versions)
+                    sentMessage = await client.sendMessage(to, message, options);
+                } catch (method2Error) {
+                    console.log('⚠️ Method 2 also failed for channel:', method2Error.message);
+                    // Method 3: Try fetching channel directly
+                    try {
+                        const chats = await client.getChats();
+                        const channelChat = chats.find(c => c.id._serialized === to);
+                        if (channelChat && channelChat.sendMessage) {
+                            sentMessage = await channelChat.sendMessage(message);
+                        } else {
+                            throw new Error('Channel not found in chat list');
+                        }
+                    } catch (method3Error) {
+                        console.error('❌ All methods failed for channel:', method3Error);
+                        return res.status(400).json({ 
+                            error: 'Failed to send message to channel. Channel may not be accessible.',
+                            details: method3Error.message
+                        });
+                    }
+                }
+            }
+        } else if (action === 'sendReply' && quotedMessageId) {
+            // Regular chat with reply
             try {
                 // Try to get message by id (support both id formats)
                 let quotedMsg;
@@ -286,12 +321,13 @@ router.post('/send-message', authenticateAPI, async (req, res) => {
                 });
             }
         } else {
-            const options = {};
+            // Regular chat without reply
+            const chatOptions = {};
             if (mentions && Array.isArray(mentions)) {
-                options.mentions = mentions;
+                chatOptions.mentions = mentions;
             }
             
-            sentMessage = await client.sendMessage(to, message, options);
+            sentMessage = await client.sendMessage(to, message, chatOptions);
         }
 
         res.json({

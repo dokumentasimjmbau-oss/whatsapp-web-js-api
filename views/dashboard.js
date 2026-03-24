@@ -633,17 +633,26 @@ function getDashboardPage({ isClientReady, clientInfo, currentQRCode, qrCodeTime
         }
         
         // Poll QR status from server
+        let wasConnected = isConnected;
         async function pollQRStatus(immediate = false) {
-            if (isConnected) return; // Stop polling if already connected
-            
             try {
                 const response = await fetch('/admin/qr-status');
                 const data = await response.json();
                 
-                if (data.isConnected && !isConnected) {
+                if (data.isConnected && !wasConnected) {
                     // Status changed to connected - update UI
                     showConnectedStatus(data.clientInfo);
+                    wasConnected = true;
+                    isConnected = true;
+                } else if (!data.isConnected && wasConnected) {
+                    // Status changed from connected to disconnected
+                    wasConnected = false;
+                    isConnected = false;
+                    // Reload page to show QR code
+                    console.log('⚠️ WhatsApp disconnected! Reloading...');
+                    window.location.reload();
                 } else if (!data.isConnected && data.hasQR && data.qrCode) {
+                    // Not connected but has QR code - update QR
                     // Check if QR code is new
                     if (data.timestamp !== lastQRTimestamp) {
                         updateQRCode(data.qrCode, data.timestamp);

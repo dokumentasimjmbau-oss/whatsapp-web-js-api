@@ -1,4 +1,4 @@
-// HTML Templates for Lists (Chats, Groups, Contacts, Media) with Pagination
+// HTML Templates for Lists (Chats, Groups, Contacts, Media) with Pagination and Search
 
 const { CONFIG } = require('../config');
 
@@ -86,15 +86,35 @@ const commonCSS = `
             margin-bottom: 20px;
             font-size: 24px;
         }
+        .search-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
         .search-box {
-            width: 100%;
+            flex: 1;
             padding: 12px 15px;
             border: 2px solid #e0e0e0;
             border-radius: 10px;
             font-size: 16px;
-            margin-bottom: 20px;
         }
-        .search-box:focus { outline: none; border-color: #667eea; }
+        .search-box:focus { 
+            outline: none; 
+            border-color: #667eea; 
+        }
+        .search-btn {
+            padding: 12px 24px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .search-btn:hover {
+            background: #5568d3;
+        }
         .stats-info {
             color: #666;
             margin-bottom: 20px;
@@ -113,6 +133,7 @@ const commonCSS = `
             border-radius: 10px;
             border-left: 4px solid #667eea;
             transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
         }
         .list-item:hover {
             transform: translateX(5px);
@@ -226,9 +247,12 @@ function getChatsListPage({ chats, currentPage, totalPages, totalCount, searchQu
         <div class="card">
             <h2>Semua Chat (${totalCount})</h2>
             
-            <form method="GET" action="/admin/chats">
-                <input type="text" name="search" class="search-box" 
-                    placeholder="Cari chat..." value="${searchQuery || ''}">
+            <form action="/admin/chats" method="GET">
+                <div class="search-container">
+                    <input type="text" name="search" class="search-box" 
+                        placeholder="Cari chat... (tekan ENTER)" value="${searchQuery || ''}">
+                    <button type="submit" class="search-btn">🔍 Cari</button>
+                </div>
             </form>
             
             <div class="stats-info">
@@ -283,9 +307,12 @@ function getGroupsListPage({ groups, currentPage, totalPages, totalCount, search
         <div class="card">
             <h2>Semua Group (${totalCount})</h2>
             
-            <form method="GET" action="/admin/groups">
-                <input type="text" name="search" class="search-box" 
-                    placeholder="Cari group..." value="${searchQuery || ''}">
+            <form action="/admin/groups" method="GET">
+                <div class="search-container">
+                    <input type="text" name="search" class="search-box" 
+                        placeholder="Cari group... (tekan ENTER)" value="${searchQuery || ''}">
+                    <button type="submit" class="search-btn">🔍 Cari</button>
+                </div>
             </form>
             
             <div class="stats-info">
@@ -340,9 +367,12 @@ function getContactsListPage({ contacts, currentPage, totalPages, totalCount, se
         <div class="card">
             <h2>Semua Kontak (${totalCount})</h2>
             
-            <form method="GET" action="/admin/contacts">
-                <input type="text" name="search" class="search-box" 
-                    placeholder="Cari kontak..." value="${searchQuery || ''}">
+            <form action="/admin/contacts" method="GET">
+                <div class="search-container">
+                    <input type="text" name="search" class="search-box" 
+                        placeholder="Cari kontak... (tekan ENTER)" value="${searchQuery || ''}">
+                    <button type="submit" class="search-btn">🔍 Cari</button>
+                </div>
             </form>
             
             <div class="stats-info">
@@ -378,7 +408,7 @@ function getMediaListPage({ files, currentPage, totalPages, totalCount }) {
         else if (['pdf'].includes(ext)) icon = '📑';
         
         return `
-        <div class="list-item" style="cursor: pointer;" onclick="window.open('/media/${file.filename}', '_blank')">
+        <div class="list-item" onclick="window.open('/media/${file.filename}', '_blank')">
             <div class="list-item-icon">${icon}</div>
             <div class="list-item-content">
                 <div class="list-item-title">${file.filename}</div>
