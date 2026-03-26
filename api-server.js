@@ -128,8 +128,32 @@ client.on('authenticated', () => {
 });
 
 // Event: Disconnected
-client.on('disconnected', (reason) => {
+client.on('disconnected', async (reason) => {
     console.log('⚠️ Client disconnected:', reason);
+
+    // Reset QR state agar dashboard tidak stuck
+    currentQRCode = null;
+    qrCodeTimestamp = null;
+    updateQRData(null, null);
+    app.set('currentQRCode', null);
+    app.set('qrCodeTimestamp', null);
+
+    // Hapus file QR lama jika ada
+    const { CONFIG: cfg } = require('./config');
+    const qrFilePath = require('path').join(cfg.MEDIA_FOLDER, 'qrcode.png');
+    if (require('fs').existsSync(qrFilePath)) {
+        try { require('fs').unlinkSync(qrFilePath); } catch(e) {}
+    }
+
+    // Re-initialize setelah 3 detik agar koneksi benar-benar putus dulu
+    console.log('🔄 Re-initializing WhatsApp client untuk generate QR baru...');
+    setTimeout(async () => {
+        try {
+            await client.initialize();
+        } catch (e) {
+            console.log('⚠️ Re-init info:', e.message);
+        }
+    }, 3000);
 });
 
  // Event: Message Create

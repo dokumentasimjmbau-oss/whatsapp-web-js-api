@@ -463,6 +463,25 @@ router.post('/webhook-settings', requireAuth, (req, res) => {
     res.redirect('/admin/webhook-settings');
 });
 
+// Logout Device (disconnect WA dari server, tampilkan QR lagi)
+router.post('/logout-device', requireAuth, async (req, res) => {
+    const client = req.app.get('whatsappClient');
+
+    if (!client) {
+        return res.json({ success: false, error: 'WhatsApp client not available' });
+    }
+
+    try {
+        console.log('🚪 Logout device requested from dashboard...');
+        await client.logout();
+        console.log('✅ Logout device successful. Waiting for new QR...');
+        res.json({ success: true, message: 'Device berhasil di-logout. QR code baru akan muncul dalam beberapa detik.' });
+    } catch (err) {
+        console.error('❌ Error logout device:', err.message);
+        res.json({ success: false, error: err.message });
+    }
+});
+
 // Test Webhook API
 router.post('/webhook-test', requireAuth, async (req, res) => {
     const { url } = req.body;

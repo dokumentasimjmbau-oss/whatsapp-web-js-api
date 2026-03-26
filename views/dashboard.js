@@ -149,13 +149,19 @@ function getDashboardPage({ isClientReady, clientInfo, currentQRCode, qrCodeTime
         `;
     } else if (isClientReady) {
         qrHtml = `
-            <div class="status-section success">
+            <div class="status-section success" id="connectedSection">
                 <h2>✅ WhatsApp Terhubung</h2>
                 <p>WhatsApp Web berhasil terhubung dan siap digunakan.</p>
                 <div class="connection-info">
                     <p><strong>User:</strong> ${clientInfo.pushname}</p>
                     <p><strong>Nomor:</strong> ${clientInfo.wid.user}</p>
                     <p><strong>Platform:</strong> ${clientInfo.platform}</p>
+                </div>
+                <div style="margin-top:20px;">
+                    <button class="logout-device-btn" onclick="logoutDevice()" id="logoutDeviceBtn">
+                        🚪 Logout Device
+                    </button>
+                    <p style="color:#888;font-size:12px;margin-top:8px;">Hapus sesi WA dari server ini dan tampilkan QR code baru</p>
                 </div>
             </div>
         `;
@@ -353,6 +359,25 @@ function getDashboardPage({ isClientReady, clientInfo, currentQRCode, qrCodeTime
         }
         .status-section.success h2 { color: #155724; justify-content: center; }
         .status-section.success p { color: #155724; margin-bottom: 20px; }
+        .logout-device-btn {
+            padding: 10px 24px;
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .logout-device-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(220, 53, 69, 0.4);
+        }
+        .logout-device-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
         .connection-info {
             background: white;
             padding: 20px;
@@ -554,10 +579,10 @@ function getDashboardPage({ isClientReady, clientInfo, currentQRCode, qrCodeTime
         
         // Function to show connected status
         function showConnectedStatus(clientInfo) {
-            const qrSection = document.querySelector('.qr-section');
+            const qrSection = document.querySelector('.qr-section, .status-section.loading');
             if (qrSection) {
                 qrSection.outerHTML = \`
-                    <div class="status-section success">
+                    <div class="status-section success" id="connectedSection">
                         <h2>✅ WhatsApp Terhubung</h2>
                         <p>WhatsApp Web berhasil terhubung dan siap digunakan.</p>
                         <div class="connection-info">
@@ -565,10 +590,64 @@ function getDashboardPage({ isClientReady, clientInfo, currentQRCode, qrCodeTime
                             <p><strong>Nomor:</strong> \${clientInfo.wid}</p>
                             <p><strong>Platform:</strong> \${clientInfo.platform}</p>
                         </div>
+                        <div style="margin-top:20px;">
+                            <button class="logout-device-btn" onclick="logoutDevice()" id="logoutDeviceBtn">
+                                🚪 Logout Device
+                            </button>
+                            <p style="color:#888;font-size:12px;margin-top:8px;">Hapus sesi WA dari server ini dan tampilkan QR code baru</p>
+                        </div>
                     </div>
                 \`;
                 isConnected = true;
                 console.log('✅ WhatsApp connected!');
+            }
+        }
+
+        // Function to show disconnected / waiting QR status
+        function showDisconnectedStatus() {
+            const connectedSection = document.querySelector('.status-section.success, #connectedSection');
+            if (connectedSection) {
+                connectedSection.outerHTML = \`
+                    <div class="status-section loading">
+                        <h2>⏳ Menunggu QR Code...</h2>
+                        <p>WA terputus. QR code akan muncul dalam beberapa saat...</p>
+                        <div class="loading-spinner"></div>
+                    </div>
+                \`;
+            }
+            isConnected = false;
+            wasConnected = false;
+            console.log('⚠️ Showing disconnected state...');
+        }
+
+        // Function to logout device from dashboard
+        async function logoutDevice() {
+            const btn = document.getElementById('logoutDeviceBtn');
+            if (!btn || btn.disabled) return;
+
+            if (!confirm('Yakin ingin logout device ini? QR code baru akan muncul untuk scan ulang.')) return;
+
+            btn.textContent = '⏳ Logging out...';
+            btn.disabled = true;
+
+            try {
+                const response = await fetch('/admin/logout-device', { method: 'POST' });
+                const data = await response.json();
+
+                if (data.success) {
+                    console.log('✅ Logout device success');
+                    showDisconnectedStatus();
+                    // Polling akan mendeteksi QR baru otomatis
+                } else {
+                    alert('Gagal logout device: ' + data.error);
+                    btn.textContent = '🚪 Logout Device';
+                    btn.disabled = false;
+                }
+            } catch (err) {
+                console.error('Error:', err);
+                alert('Terjadi kesalahan saat logout device');
+                btn.textContent = '🚪 Logout Device';
+                btn.disabled = false;
             }
         }
         
@@ -648,9 +727,9 @@ function getDashboardPage({ isClientReady, clientInfo, currentQRCode, qrCodeTime
                     // Status changed from connected to disconnected
                     wasConnected = false;
                     isConnected = false;
-                    // Reload page to show QR code
-                    console.log('⚠️ WhatsApp disconnected! Reloading...');
-                    window.location.reload();
+                    // Update UI tanpa reload - tampilkan loading spinner
+                    console.log('⚠️ WhatsApp disconnected! Updating UI...');
+                    showDisconnectedStatus();
                 } else if (!data.isConnected && data.hasQR && data.qrCode) {
                     // Not connected but has QR code - update QR
                     // Check if QR code is new
