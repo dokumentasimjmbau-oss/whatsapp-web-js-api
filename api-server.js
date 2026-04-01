@@ -179,16 +179,30 @@ client.on('message_create', async (message) => {
         isGroupMsg: message.from.includes('@g.us')
     };
 
-    // Download media jika ada dan simpan ke folder media/
+    // Download media jika ada (image, video, document, voice, audio, sticker, dll)
     if (message.hasMedia) {
         try {
-            console.log(`📥 Mendownload media dari pesan ${message.id.id}...`);
+            // Deteksi apakah ini voice message
+            const isVoice = message.type === 'ptt' || // ptt = push-to-talk (voice note WA)
+                            message.type === 'audio' ||
+                            (message.type === 'voice');
+
+            console.log(`📥 Mendownload media [${message.type}] dari pesan ${message.id.id}...`);
             const media = await message.downloadMedia();
 
             if (media && media.data) {
-                // Tentukan ekstensi file dari mimetype
+                // Tentukan mimetype & ekstensi
                 const mimeType = media.mimetype || 'application/octet-stream';
-                const ext = mimeType.split('/')[1]?.split(';')[0] || 'bin';
+                let ext = mimeType.split('/')[1]?.split(';')[0] || 'bin';
+
+                // Voice note WA biasanya dikirim sebagai audio/ogg; codecs=opus
+                // Pastikan ekstensi .ogg agar mudah dikenali modul speech-to-text
+                if (isVoice && (ext === 'ogg' || mimeType.includes('ogg'))) {
+                    ext = 'ogg';
+                } else if (isVoice && mimeType.includes('mpeg')) {
+                    ext = 'mp3';
+                }
+
                 const filename = `${message.id.id}_${Date.now()}.${ext}`;
                 const filePath = path.join(CONFIG.MEDIA_FOLDER, filename);
 
@@ -202,11 +216,12 @@ client.on('message_create', async (message) => {
                     : `http://localhost:${CONFIG.API_PORT}`;
 
                 const mediaUrl = `${baseURL}/media/${filename}`;
-                console.log(`✅ Media tersimpan: ${filename} → ${mediaUrl}`);
+                console.log(`✅ Media [${message.type}] tersimpan: ${filename} → ${mediaUrl}`);
 
                 msgPayload.mediaUrl = mediaUrl;
                 msgPayload.mediaFilename = filename;
                 msgPayload.mediaMimetype = mimeType;
+                msgPayload.isVoice = isVoice; // true jika voice note, false jika media lain
             }
         } catch (mediaErr) {
             console.error(`❌ Gagal download media:`, mediaErr.message);
