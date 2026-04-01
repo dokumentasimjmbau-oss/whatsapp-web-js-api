@@ -25,6 +25,9 @@ const app = express();
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// Serve media folder as static files (untuk akses URL media)
+app.use('/media', express.static(path.join(__dirname, 'media')));
+
 // Enable CORS
 app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -159,25 +162,59 @@ client.on('disconnected', async (reason) => {
  // Event: Message Create
 client.on('message_create', async (message) => {
     console.log(`📩 Pesan dari ${message.from}: ${message.body?.substring(0, 50)}...`);
-    
-    // Send webhook
-    const payload = {
-        message: {
-            id: message.id._serialized || message.id.id,
-            serializedId: message.id._serialized,
-            originalId: message.id.id,
-            from: message.from,
-            to: message.to,
-            body: message.body,
-            type: message.type,
-            timestamp: message.timestamp,
-            hasMedia: message.hasMedia,
-            author: message.author,
-            deviceType: message.deviceType,
-            isGroupMsg: message.from.includes('@g.us')
-        }
+
+    // Build base message payload
+    const msgPayload = {
+        id: message.id._serialized || message.id.id,
+        serializedId: message.id._serialized,
+        originalId: message.id.id,
+        from: message.from,
+        to: message.to,
+        body: message.body,
+        type: message.type,
+        timestamp: message.timestamp,
+        hasMedia: message.hasMedia,
+        author: message.author,
+        deviceType: message.deviceType,
+        isGroupMsg: message.from.includes('@g.us')
     };
 
+    // Download media jika ada dan simpan ke folder media/
+    if (message.hasMedia) {
+        try {
+            console.log(`📥 Mendownload media dari pesan ${message.id.id}...`);
+            const media = await message.downloadMedia();
+
+            if (media && media.data) {
+                // Tentukan ekstensi file dari mimetype
+                const mimeType = media.mimetype || 'application/octet-stream';
+                const ext = mimeType.split('/')[1]?.split(';')[0] || 'bin';
+                const filename = `${message.id.id}_${Date.now()}.${ext}`;
+                const filePath = path.join(CONFIG.MEDIA_FOLDER, filename);
+
+                // Simpan file ke disk
+                const buffer = Buffer.from(media.data, 'base64');
+                fs.writeFileSync(filePath, buffer);
+
+                // Tentukan base URL
+                const baseURL = process.env.RAILWAY_PUBLIC_DOMAIN
+                    ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+                    : `http://localhost:${CONFIG.API_PORT}`;
+
+                const mediaUrl = `${baseURL}/media/${filename}`;
+                console.log(`✅ Media tersimpan: ${filename} → ${mediaUrl}`);
+
+                msgPayload.mediaUrl = mediaUrl;
+                msgPayload.mediaFilename = filename;
+                msgPayload.mediaMimetype = mimeType;
+            }
+        } catch (mediaErr) {
+            console.error(`❌ Gagal download media:`, mediaErr.message);
+            msgPayload.mediaError = mediaErr.message;
+        }
+    }
+
+    const payload = { message: msgPayload };
     await sendWebhook('message_create', payload);
 });
 
