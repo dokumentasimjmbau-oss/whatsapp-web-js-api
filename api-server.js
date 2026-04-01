@@ -210,10 +210,13 @@ client.on('message_create', async (message) => {
                 const buffer = Buffer.from(media.data, 'base64');
                 fs.writeFileSync(filePath, buffer);
 
-                // Tentukan base URL
-                const baseURL = process.env.RAILWAY_PUBLIC_DOMAIN
-                    ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
-                    : `http://localhost:${CONFIG.API_PORT}`;
+                // Tentukan base URL — prioritas:
+                // 1. BASE_URL (env var custom, paling reliable, set manual di Railway)
+                // 2. RAILWAY_PUBLIC_DOMAIN (env var otomatis Railway jika domain di-generate)
+                // 3. fallback localhost (hanya untuk dev lokal)
+                const baseURL = process.env.BASE_URL
+                    || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null)
+                    || `http://localhost:${CONFIG.API_PORT}`;
 
                 const mediaUrl = `${baseURL}/media/${filename}`;
                 console.log(`✅ Media [${message.type}] tersimpan: ${filename} → ${mediaUrl}`);
