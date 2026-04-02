@@ -491,4 +491,114 @@ router.post('/send-media', authenticateAPI, async (req, res) => {
     }
 });
 
+// Forward message
+// Body: { messageId?, chatId?, to (string|array), limit? }
+// - messageId: forward a specific message by its serialized ID
+// - chatId: forward the latest `limit` messages from a chat (default 1)
+// - to: single chatId string or array of chatId strings
+router.post('/forward-message', authenticateAPI, async (req, res) => {
+    try {
+        const client = req.app.get('whatsappClient');
+        if (!client || !client.info) {
+            return res.status(503).json({ error: 'WhatsApp client not ready' });
+        }
+
+        const { messageId, chatId, to, limit = 1 } = req.body;
+
+        // Validate: need a source
+        if (!messageId && !chatId) {
+            return res.status(400).json({ error: 'Missing required field: messageId or chatId' });
+        }
+
+        // Validate: need a destination
+        if (!to) {
+            return res.status(400).json({ error: 'Missing required field: to' });
+        }
+
+        // Normalize destinations to array
+        const destinations = Array.isArray(to) ? to : [to];
+        if (destinations.length === 0) {
+            return res.status(400).json({ error: 'Field "to" must not be empty' });
+        }
+
+        // Collect messages to forward
+        let messagesToForward = [];
+
+        if (messageId) {
+            // Source: specific message by ID
+            try {
+                const msg = await client.getMessageById(messageId);
+                if (!msg) throw new Error('Message not found');
+                messagesToForward.push(msg);
+            } catch (err) {
+                return res.status(404).json({
+                    error: 'Message not found',
+                    details: err.message,
+                    hint: 'Use serialized message ID (e.g. from webhook payload)'
+                });
+            }
+        } else {
+            // Source: latest N messages from a chat
+            try {
+                const chat = await client.getChatById(chatId);
+                const fetchLimit = Math.min(Math.max(parseInt(limit) || 1, 1), 20); // cap at 20
+                const messages = await chat.fetchMessages({ limit: fetchLimit });
+                if (!messages || messages.length === 0) {
+                    return res.status(404).json({ error: 'No messages found in the specified chat' });
+                }
+                messagesToForward = messages;
+            } catch (err) {
+                return res.status(404).json({
+                    error: 'Chat not found or cannot fetch messages',
+                    details: err.message
+                });
+            }
+        }
+
+        // Forward each message to each destination
+        const results = [];
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const msg of messagesToForward) {
+            for (const dest of destinations) {
+                try {
+                    const forwarded = await msg.forward(dest);
+                    results.push({
+                        success: true,
+                        sourceMessageId: msg.id._serialized,
+                        to: dest,
+                        forwardedMessageId: forwarded?.id?._serialized || null,
+                        type: msg.type,
+                        hasMedia: msg.hasMedia
+                    });
+                    successCount++;
+                } catch (fwdErr) {
+                    results.push({
+                        success: false,
+                        sourceMessageId: msg.id._serialized,
+                        to: dest,
+                        error: fwdErr.message
+                    });
+                    failCount++;
+                }
+            }
+        }
+
+        res.json({
+            success: failCount === 0,
+            summary: {
+                total: results.length,
+                succeeded: successCount,
+                failed: failCount
+            },
+            results
+        });
+
+    } catch (error) {
+        console.error('❌ Error forwarding message:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 module.exports = router;
