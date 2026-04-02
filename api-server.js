@@ -71,7 +71,8 @@ const client = new Client({
     puppeteer: {
         headless: true,
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-        executablePath: chromePath || undefined
+        executablePath: chromePath || undefined,
+        protocolTimeout: 120000  // 120 detik (default 30s) — untuk file besar seperti audio/video
     }
 });
 
