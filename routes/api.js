@@ -359,12 +359,16 @@ router.post('/send-media', authenticateAPI, async (req, res) => {
             return res.status(400).json({ error: 'Missing required fields: to, data' });
         }
 
-        // Simulate typing if requested
+        // Simulate typing if requested (wrapped in try-catch so failure doesn't block sending)
         if (simulateTyping && typingDuration) {
-            const chat = await client.getChatById(to);
-            await chat.sendStateTyping();
-            await new Promise(resolve => setTimeout(resolve, typingDuration));
-            await chat.clearState();
+            try {
+                const chat = await client.getChatById(to);
+                await chat.sendStateTyping();
+                await new Promise(resolve => setTimeout(resolve, typingDuration));
+                await chat.clearState();
+            } catch (typingError) {
+                console.log('⚠️ simulateTyping gagal, lanjut kirim media:', typingError.message);
+            }
         }
 
         // Delay if requested
@@ -397,7 +401,7 @@ router.post('/send-media', authenticateAPI, async (req, res) => {
             return res.status(400).json({ error: 'Missing mimetype' });
         }
 
-        // Create MessageMedia
+        // Build MessageMedia directly with correct mimetype (avoid fromFilePath overriding mimetype)
         const media = new MessageMedia(mediaMimetype, mediaData, mediaFilename);
 
         // Send options
@@ -405,30 +409,21 @@ router.post('/send-media', authenticateAPI, async (req, res) => {
         if (sendAsVoice) options.sendAudioAsVoice = true;
         if (sendAsDocument) options.sendMediaAsDocument = true;
 
-        // Save to temp file (more reliable)
-        const tempFilePath = path.join(CONFIG.MEDIA_FOLDER, `temp_${Date.now()}_${mediaFilename}`);
-        fs.writeFileSync(tempFilePath, mediaData, 'base64');
-        
-        const mediaFromFile = MessageMedia.fromFilePath(tempFilePath);
-        mediaFromFile.filename = mediaFilename;
-        
+        console.log(`📤 Sending media: ${mediaFilename}, mimetype: ${mediaMimetype}, sendAsVoice: ${!!sendAsVoice}`);
+
         let sentMessage;
         
         if (quotedMessageId) {
             try {
                 const quotedMsg = await client.getMessageById(quotedMessageId);
-                sentMessage = await quotedMsg.reply(mediaFromFile, to, { caption: caption || '' });
+                sentMessage = await quotedMsg.reply(media, to, options);
             } catch (replyError) {
-                sentMessage = await client.sendMessage(to, mediaFromFile, options);
+                console.log('⚠️ Reply gagal, kirim sebagai pesan baru:', replyError.message);
+                sentMessage = await client.sendMessage(to, media, options);
             }
         } else {
-            sentMessage = await client.sendMessage(to, mediaFromFile, options);
+            sentMessage = await client.sendMessage(to, media, options);
         }
-        
-        // Clean up temp file
-        try {
-            fs.unlinkSync(tempFilePath);
-        } catch (cleanupError) {}
 
         res.json({
             success: true,
