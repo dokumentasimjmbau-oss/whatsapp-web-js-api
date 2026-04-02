@@ -4,8 +4,25 @@ const { MessageMedia } = require('whatsapp-web.js');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+const { execSync } = require('child_process');
 const { CONFIG, getBaseURL } = require('../config');
 const { authenticateAPI } = require('../middleware/auth');
+
+// Convert audio to OGG Opus (required format for WhatsApp voice notes)
+function convertToOggOpus(inputPath) {
+    const outputPath = inputPath.replace(/\.[^/.]+$/, '') + '_converted.ogg';
+    try {
+        execSync(`ffmpeg -y -i "${inputPath}" -c:a libopus -b:a 64k -ar 48000 -ac 1 "${outputPath}"`, {
+            timeout: 60000,
+            stdio: 'pipe'
+        });
+        console.log(`✅ Audio converted to OGG Opus: ${outputPath}`);
+        return outputPath;
+    } catch (err) {
+        console.error('❌ ffmpeg conversion failed:', err.message);
+        return null;
+    }
+}
 
 // Download file from URL
 async function downloadFileFromURL(url) {
@@ -408,25 +425,39 @@ router.post('/send-media', authenticateAPI, async (req, res) => {
 
         console.log(`📤 Sending media: ${mediaFilename}, mimetype: ${mediaMimetype}, sendAsVoice: ${!!sendAsVoice}`);
 
-        // Save to temp file with correct extension (fromFilePath is more reliable for large files)
+        // Save to temp file with correct extension
         const tempFilePath = path.join(CONFIG.MEDIA_FOLDER, `temp_${Date.now()}_${mediaFilename}`);
         fs.writeFileSync(tempFilePath, mediaData, 'base64');
-        
+
+        let finalFilePath = tempFilePath;
+        let finalMimetype = mediaMimetype;
+        let convertedPath = null;
+
+        // Auto-convert audio to OGG Opus for sendAsVoice (WhatsApp only accepts OGG/Opus for voice notes)
+        if (sendAsVoice && mediaMimetype && mediaMimetype.startsWith('audio/') && !mediaMimetype.includes('ogg')) {
+            console.log(`🔄 Converting audio to OGG Opus for voice note compatibility...`);
+            convertedPath = convertToOggOpus(tempFilePath);
+            if (convertedPath) {
+                finalFilePath = convertedPath;
+                finalMimetype = 'audio/ogg; codecs=opus';
+                console.log(`✅ Using converted OGG Opus file`);
+            } else {
+                console.log(`⚠️ Conversion failed, trying original file...`);
+            }
+        }
+
         let media;
         try {
-            media = MessageMedia.fromFilePath(tempFilePath);
-            // Override filename to what was requested, keep mimetype from fromFilePath (detected from extension)
+            media = MessageMedia.fromFilePath(finalFilePath);
             media.filename = mediaFilename;
-            // If mimetype from file detection differs, override with what user sent (more reliable)
-            if (mediaMimetype) media.mimetype = mediaMimetype;
+            if (finalMimetype) media.mimetype = finalMimetype;
         } catch (fileError) {
-            // Fallback: build MessageMedia directly from base64
             console.log('⚠️ fromFilePath gagal, fallback ke base64:', fileError.message);
-            media = new MessageMedia(mediaMimetype, mediaData, mediaFilename);
+            media = new MessageMedia(finalMimetype || mediaMimetype, mediaData, mediaFilename);
         }
 
         let sentMessage;
-        
+
         if (quotedMessageId) {
             try {
                 const quotedMsg = await client.getMessageById(quotedMessageId);
@@ -439,8 +470,9 @@ router.post('/send-media', authenticateAPI, async (req, res) => {
             sentMessage = await client.sendMessage(to, media, options);
         }
 
-        // Clean up temp file
+        // Clean up temp files
         try { fs.unlinkSync(tempFilePath); } catch (e) {}
+        if (convertedPath) { try { fs.unlinkSync(convertedPath); } catch (e) {} }
 
         res.json({
             success: true,
