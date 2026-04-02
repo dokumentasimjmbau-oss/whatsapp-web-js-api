@@ -401,15 +401,29 @@ router.post('/send-media', authenticateAPI, async (req, res) => {
             return res.status(400).json({ error: 'Missing mimetype' });
         }
 
-        // Build MessageMedia directly with correct mimetype (avoid fromFilePath overriding mimetype)
-        const media = new MessageMedia(mediaMimetype, mediaData, mediaFilename);
-
         // Send options
         const options = { caption: caption || '' };
         if (sendAsVoice) options.sendAudioAsVoice = true;
         if (sendAsDocument) options.sendMediaAsDocument = true;
 
         console.log(`📤 Sending media: ${mediaFilename}, mimetype: ${mediaMimetype}, sendAsVoice: ${!!sendAsVoice}`);
+
+        // Save to temp file with correct extension (fromFilePath is more reliable for large files)
+        const tempFilePath = path.join(CONFIG.MEDIA_FOLDER, `temp_${Date.now()}_${mediaFilename}`);
+        fs.writeFileSync(tempFilePath, mediaData, 'base64');
+        
+        let media;
+        try {
+            media = MessageMedia.fromFilePath(tempFilePath);
+            // Override filename to what was requested, keep mimetype from fromFilePath (detected from extension)
+            media.filename = mediaFilename;
+            // If mimetype from file detection differs, override with what user sent (more reliable)
+            if (mediaMimetype) media.mimetype = mediaMimetype;
+        } catch (fileError) {
+            // Fallback: build MessageMedia directly from base64
+            console.log('⚠️ fromFilePath gagal, fallback ke base64:', fileError.message);
+            media = new MessageMedia(mediaMimetype, mediaData, mediaFilename);
+        }
 
         let sentMessage;
         
@@ -424,6 +438,9 @@ router.post('/send-media', authenticateAPI, async (req, res) => {
         } else {
             sentMessage = await client.sendMessage(to, media, options);
         }
+
+        // Clean up temp file
+        try { fs.unlinkSync(tempFilePath); } catch (e) {}
 
         res.json({
             success: true,
