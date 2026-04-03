@@ -285,6 +285,9 @@ router.get('/chats', requireAuth, async (req, res) => {
             setTimeout(() => reject(new Error('getChats timeout (30s)')), 30000)
         );
         const allChats = await Promise.race([client.getChats(), timeoutGuard]);
+
+        // Filter by search
+        let filteredChats = allChats;
         if (search) {
             filteredChats = allChats.filter(chat =>
                 chat.name?.toLowerCase().includes(search.toLowerCase())
