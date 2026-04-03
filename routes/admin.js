@@ -45,9 +45,13 @@ async function getCachedStats(client) {
         return statsCache;
     }
     try {
-        const chats = await client.getChats();
+        // Timeout guard 8 detik — jika Chrome sibuk, jangan block dashboard render
+        const timeout = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('getCachedStats timeout (8s)')), 8000)
+        );
+        const chats = await Promise.race([client.getChats(), timeout]);
         const groups = chats.filter(c => c.isGroup);
-        const contacts = await client.getContacts();
+        const contacts = await Promise.race([client.getContacts(), timeout]);
         statsCache = {
             chats: chats.length,
             groups: groups.length,
