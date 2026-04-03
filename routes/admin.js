@@ -34,6 +34,35 @@ function getFlash(sessionId) {
 // Pagination config
 const ITEMS_PER_PAGE = 20;
 
+// Stats cache — refresh max setiap 60 detik agar dashboard tidak spam getChats()
+let statsCache = null;
+let statsCacheTime = 0;
+const STATS_CACHE_TTL = 60000; // 60 detik
+
+async function getCachedStats(client) {
+    const now = Date.now();
+    if (statsCache && (now - statsCacheTime) < STATS_CACHE_TTL) {
+        return statsCache;
+    }
+    try {
+        const chats = await client.getChats();
+        const groups = chats.filter(c => c.isGroup);
+        const contacts = await client.getContacts();
+        statsCache = {
+            chats: chats.length,
+            groups: groups.length,
+            contacts: contacts.filter(c => c.isUser).length,
+            mediaFiles: require('fs').readdirSync(require('./config') ? require('../config').CONFIG.MEDIA_FOLDER : 'media').length
+        };
+        statsCacheTime = now;
+    } catch (e) {
+        console.error('Error fetching stats:', e.message);
+        // Kembalikan cache lama jika ada, daripada null
+        if (!statsCache) statsCache = null;
+    }
+    return statsCache;
+}
+
 // Store current QR code data (shared with main server)
 let qrData = {
     currentQRCode: null,
@@ -213,20 +242,11 @@ router.get('/dashboard', requireAuth, async (req, res) => {
         
         if (isClientReady) {
             clientInfo = client.info;
-            
-            try {
-                const chats = await client.getChats();
-                const groups = chats.filter(c => c.isGroup);
-                const contacts = await client.getContacts();
-                
-                stats = {
-                    chats: chats.length,
-                    groups: groups.length,
-                    contacts: contacts.filter(c => c.isUser).length,
-                    mediaFiles: fs.readdirSync(CONFIG.MEDIA_FOLDER).length
-                };
-            } catch (e) {
-                console.error('Error fetching stats:', e.message);
+            // Gunakan cached stats — tidak langsung getChats() setiap render dashboard
+            stats = await getCachedStats(client);
+            // Tambahkan mediaFiles realtime (murah, tidak perlu Chrome)
+            if (stats) {
+                stats = { ...stats, mediaFiles: fs.readdirSync(CONFIG.MEDIA_FOLDER).length };
             }
         } else if (qrData.currentQRCode) {
             // Generate QR base64 for display
@@ -261,10 +281,10 @@ router.get('/chats', requireAuth, async (req, res) => {
         const page = parseInt(req.query.page) || 1;
         const search = req.query.search || '';
         
-        const allChats = await client.getChats();
-        
-        // Filter by search
-        let filteredChats = allChats;
+        const timeoutGuard = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('getChats timeout (30s)')), 30000)
+        );
+        const allChats = await Promise.race([client.getChats(), timeoutGuard]);
         if (search) {
             filteredChats = allChats.filter(chat =>
                 chat.name?.toLowerCase().includes(search.toLowerCase())
@@ -307,7 +327,10 @@ router.get('/groups', requireAuth, async (req, res) => {
         const page = parseInt(req.query.page) || 1;
         const search = req.query.search || '';
         
-        const allChats = await client.getChats();
+        const timeoutGuardG = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('getChats timeout (30s)')), 30000)
+        );
+        const allChats = await Promise.race([client.getChats(), timeoutGuardG]);
         let allGroups = allChats.filter(chat => chat.isGroup);
         
         // Filter by search
@@ -353,8 +376,11 @@ router.get('/contacts', requireAuth, async (req, res) => {
         const page = parseInt(req.query.page) || 1;
         const search = req.query.search || '';
         
-        let allContacts = await client.getContacts();
-        allContacts = allContacts.filter(c => c.number); // Only with numbers
+        const timeoutGuardC = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('getContacts timeout (30s)')), 30000)
+        );
+        let allContacts = await Promise.race([client.getContacts(), timeoutGuardC]);
+        allContacts = allContacts.filter(c => c.number);
         
         // Filter by search
         if (search) {
