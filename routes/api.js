@@ -255,12 +255,16 @@ router.post('/send-message', authenticateAPI, async (req, res) => {
             return res.status(400).json({ error: 'Missing required fields: to, message' });
         }
 
-        // Simulate typing if requested
+        // Simulate typing if requested (wrapped in try-catch so failure doesn't block sending)
         if (simulateTyping && typingDuration) {
-            const chat = await client.getChatById(to);
-            await chat.sendStateTyping();
-            await new Promise(resolve => setTimeout(resolve, typingDuration));
-            await chat.clearState();
+            try {
+                const chat = await client.getChatById(to);
+                await chat.sendStateTyping();
+                await new Promise(resolve => setTimeout(resolve, typingDuration));
+                await chat.clearState();
+            } catch (typingError) {
+                console.log('⚠️ simulateTyping gagal, lanjut kirim pesan:', typingError.message);
+            }
         }
 
         // Delay if requested
