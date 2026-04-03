@@ -72,7 +72,7 @@ const client = new Client({
         headless: true,
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
         executablePath: chromePath || undefined,
-        protocolTimeout: 120000  // 120 detik (default 30s) — untuk file besar seperti audio/video
+        protocolTimeout: 300000  // 300 detik (dinaikkan dari 120s) — untuk file besar & traffic tinggi
     }
 });
 
@@ -189,7 +189,11 @@ client.on('message_create', async (message) => {
                             (message.type === 'voice');
 
             console.log(`📥 Mendownload media [${message.type}] dari pesan ${message.id.id}...`);
-            const media = await message.downloadMedia();
+            // Timeout guard: batalkan download jika > 60 detik agar tidak blokir proses lain
+            const downloadTimeout = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Download timeout (60s)')), 60000)
+            );
+            const media = await Promise.race([message.downloadMedia(), downloadTimeout]);
 
             if (media && media.data) {
                 // Tentukan mimetype & ekstensi
