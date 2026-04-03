@@ -13,7 +13,8 @@ const defaultConfig = {
         message_create: true,
         message_revoke: true,
         group_join: false,
-        group_leave: false
+        group_leave: false,
+        status_broadcast: false  // Status WA dari kontak — default OFF (hemat resource)
     },
     secret: '', // For webhook signature verification (optional)
     retryAttempts: 3,

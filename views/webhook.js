@@ -13,6 +13,7 @@ function getWebhookSettingsPage(config, flash = []) {
     const messageRevokeChecked = config.events.message_revoke ? 'checked' : '';
     const groupJoinChecked = config.events.group_join ? 'checked' : '';
     const groupLeaveChecked = config.events.group_leave ? 'checked' : '';
+    const statusBroadcastChecked = config.events.status_broadcast ? 'checked' : '';
 
     return `<!DOCTYPE html>
 <html lang="id">
@@ -306,6 +307,10 @@ function getWebhookSettingsPage(config, flash = []) {
                     <div class="checkbox-group">
                         <input type="checkbox" id="group_leave" name="group_leave" ${groupLeaveChecked}>
                         <label for="group_leave">Group Leave (group_leave)</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="status_broadcast" name="status_broadcast" ${statusBroadcastChecked}>
+                        <label for="status_broadcast">Status WA Kontak (status@broadcast) <span style="background:#fff3cd;color:#856404;font-size:11px;padding:2px 7px;border-radius:10px;margin-left:6px;">⚠️ Hemat resource jika OFF</span></label>
                     </div>
                 </div>
                 

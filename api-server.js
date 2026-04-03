@@ -162,6 +162,14 @@ client.on('disconnected', async (reason) => {
 
  // Event: Message Create
 client.on('message_create', async (message) => {
+    const isStatusBroadcast = message.from === 'status@broadcast';
+    const webhookConfig = getWebhookConfig();
+
+    // Jika status@broadcast dan event ini di-OFF-kan → skip seluruhnya (hemat resource)
+    if (isStatusBroadcast && !webhookConfig.events.status_broadcast) {
+        return;
+    }
+
     console.log(`📩 Pesan dari ${message.from}: ${message.body?.substring(0, 50)}...`);
 
     // Build base message payload

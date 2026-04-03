@@ -466,7 +466,7 @@ router.get('/webhook-settings', requireAuth, (req, res) => {
 
 // Webhook Settings POST - Update configuration
 router.post('/webhook-settings', requireAuth, (req, res) => {
-    const { webhookUrl, enabled, message_create, message_revoke, group_join, group_leave, secret } = req.body;
+    const { webhookUrl, enabled, message_create, message_revoke, group_join, group_leave, status_broadcast, secret } = req.body;
     
     const newConfig = {
         url: webhookUrl?.trim() || '',
@@ -475,7 +475,8 @@ router.post('/webhook-settings', requireAuth, (req, res) => {
             message_create: message_create === 'on',
             message_revoke: message_revoke === 'on',
             group_join: group_join === 'on',
-            group_leave: group_leave === 'on'
+            group_leave: group_leave === 'on',
+            status_broadcast: status_broadcast === 'on'
         },
         secret: secret?.trim() || ''
     };

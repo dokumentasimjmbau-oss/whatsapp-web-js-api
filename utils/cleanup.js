@@ -7,11 +7,11 @@ const MEDIA_FOLDER = path.join(__dirname, '..', 'media');
 // File yang tidak boleh dihapus apapun kondisinya
 const PROTECTED_FILES = ['qrcode.png', '.gitkeep', '.gitignore'];
 
-// Maksimal umur file sebelum dihapus: 24 jam
-const MAX_AGE_MS = 24 * 60 * 60 * 1000;
+// Maksimal umur file sebelum dihapus: 1 jam
+const MAX_AGE_MS = 1 * 60 * 60 * 1000;
 
-// Interval cleanup: setiap 24 jam
-const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
+// Interval cleanup: setiap 1 jam
+const CLEANUP_INTERVAL_MS = 1 * 60 * 60 * 1000;
 
 /**
  * Hapus file media yang sudah lebih dari 24 jam.
@@ -70,7 +70,7 @@ function cleanupOldMedia() {
 
         const savedMB = (savedBytes / 1024 / 1024).toFixed(2);
         console.log(`✅ Cleanup selesai: ${deletedCount} dihapus (${savedMB} MB), ${keptCount} dipertahankan, ${skippedCount} dilewati.`);
-        console.log(`⏰ Cleanup berikutnya dalam 24 jam.\n`);
+        console.log(`⏰ Cleanup berikutnya dalam 1 jam.\n`);
 
     } catch (err) {
         console.error(`❌ Error saat cleanup /media: ${err.message}`);
@@ -83,7 +83,7 @@ function cleanupOldMedia() {
  * - Jadwalkan cleanup otomatis setiap 24 jam
  */
 function initCleanup() {
-    console.log('🧹 Media auto-cleanup aktif: file > 24 jam akan dihapus setiap 24 jam.');
+    console.log('🧹 Media auto-cleanup aktif: file > 1 jam akan dihapus setiap 1 jam.');
     console.log(`📁 Target folder: ${MEDIA_FOLDER}`);
 
     // Pastikan folder media ada sejak awal
