@@ -52,7 +52,7 @@ async function getCachedStats(client) {
             chats: chats.length,
             groups: groups.length,
             contacts: contacts.filter(c => c.isUser).length,
-            mediaFiles: require('fs').readdirSync(require('./config') ? require('../config').CONFIG.MEDIA_FOLDER : 'media').length
+            mediaFiles: require('fs').readdirSync(require('../config').CONFIG.MEDIA_FOLDER).length
         };
         statsCacheTime = now;
     } catch (e) {
